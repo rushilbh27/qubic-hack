@@ -1,0 +1,889 @@
+{
+  "name": "GARTH",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Safe extract of the webhook payload\nconst body = $json.body || {};\nconst parsed = body.ParsedTransaction || {};\nconst rawTx = body.RawTransaction?.transaction || {};\nconst rawMeta = body.RawTransaction || {};\n\n// Convert Qubic procedure → simple BUY/SELL\nconst direction = body.ProcedureTypeName === \"AddToBidOrder\" ? \"BUY\" : \"SELL\";\n\n// Safe number conversion\nconst shares = Number(parsed.NumberOfShares || 0);\nconst price = Number(parsed.Price || 0);\n\nreturn [{\n  json: {\n    // Core identifiers\n    tx_id: rawTx.txId || null,\n    tick_number: rawTx.tickNumber || null,\n    timestamp: rawMeta.timestamp || null,\n\n    // Classification\n    direction,\n    asset_name: parsed.AssetName || \"QX\",\n\n    // Trading info\n    shares,\n    price_qubic: price,\n\n    // Placeholder for your Supabase price enrichment later\n    price_usdt: null,\n    total_value_usdt: null,\n\n    // Blockchain metadata\n    issuer: parsed.IssuerAddress || null,\n    source: rawTx.sourceId || null,\n    dest: rawTx.destId || null,\n\n    // Keep full raw payload for debugging\n    raw: body\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        16
+      ],
+      "id": "0660897d-5af1-4503-9c49-9e3a79a6950a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "tableId": "transactions",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "tx_id",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.tx_id }}"
+            },
+            {
+              "fieldId": "tick_number",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.tick_number }}"
+            },
+            {
+              "fieldId": "timestamp",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.timestamp }}"
+            },
+            {
+              "fieldId": "direction",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.direction }}"
+            },
+            {
+              "fieldId": "asset_name",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.asset_name }}"
+            },
+            {
+              "fieldId": "shares",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.shares }}"
+            },
+            {
+              "fieldId": "price_qubic",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.price_qubic }}"
+            },
+            {
+              "fieldId": "price_usdt",
+              "fieldValue": "={{ $json.price }}"
+            },
+            {
+              "fieldId": "issuer",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.issuer }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.source }}"
+            },
+            {
+              "fieldId": "dest",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.dest }}"
+            },
+            {
+              "fieldId": "raw",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.raw }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        16
+      ],
+      "id": "674be674-6913-4fb8-9931-7d1c8911be80",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "86b3a240-de12-4103-9df4-290f3f0e778f",
+              "leftValue": "={{ $json.shares }}",
+              "rightValue": 100000,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        112
+      ],
+      "id": "13066eed-911e-449e-a5b4-ba2b47bee6e4",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "chatId": "7557941907",
+        "text": "=🐋 *Whale detected!*  \n\n{{ $json.direction === \"BUY\" ? \"🟢 *BUY*\" : \"🔴 *SELL*\" }} — **{{ $json.shares }} {{ $json.shares === 1 ? \"share\" : \"shares\" }}**\n\n💰 *Price:* `{{ $json.price_qubic }} ${{ $json.asset_name }}`  \n👤 *Wallet:* `{{ $json.issuer }}`  \n🧾 *TX:* `{{ $json.tx_id }}`  \n⏱ *Tick:* `{{ $json.tick_number }}`  \n\n🔗 [Explorer Link](https://explorer.qubic.org/network/tx/{{ $json.tx_id }})\n",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        112
+      ],
+      "id": "98033598-8cf5-4d12-98ae-ab941023d1c0",
+      "name": "Send a text message1",
+      "webhookId": "787aff16-c3a9-4d35-a4bd-0d09efb50cef",
+      "credentials": {
+        "telegramApi": {
+          "id": "p9ZiMAf6V6FBmaIy",
+          "name": "Qubic Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safe extract of the webhook payload\nconst body = $json.body || {};\nconst parsed = body.ParsedTransaction || {};\nconst rawTx = body.RawTransaction?.transaction || {};\nconst rawMeta = body.RawTransaction || {};\n\n// Convert Qubic procedure → simple BUY/SELL\nconst direction = body.ProcedureTypeName === \"AddToBidOrder\" ? \"BUY\" : \"SELL\";\n\n// Safe number conversion\nconst shares = Number(parsed.NumberOfShares || 0);\nconst price = Number(parsed.Price || 0);\n\nreturn [{\n  json: {\n    // Core identifiers\n    tx_id: rawTx.txId || null,\n    tick_number: rawTx.tickNumber || null,\n    timestamp: rawMeta.timestamp || null,\n\n    // Classification\n    direction,\n    asset_name: parsed.AssetName || \"QX\",\n\n    // Trading info\n    shares,\n    price_qubic: price,\n\n    // Placeholder for your Supabase price enrichment later\n    price_usdt: null,\n    total_value_usdt: null,\n\n    // Blockchain metadata\n    issuer: parsed.IssuerAddress || null,\n    source: rawTx.sourceId || null,\n    dest: rawTx.destId || null,\n\n    // Keep full raw payload for debugging\n    raw: body\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        336
+      ],
+      "id": "8307bbd0-240f-42a0-b4ac-7df01798a043",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "tableId": "transactions",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "tx_id",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.tx_id }}"
+            },
+            {
+              "fieldId": "tick_number",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.tick_number }}"
+            },
+            {
+              "fieldId": "timestamp",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.timestamp }}"
+            },
+            {
+              "fieldId": "direction",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.direction }}"
+            },
+            {
+              "fieldId": "asset_name",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.asset_name }}"
+            },
+            {
+              "fieldId": "shares",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.shares }}"
+            },
+            {
+              "fieldId": "price_qubic",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.price_qubic }}"
+            },
+            {
+              "fieldId": "price_usdt",
+              "fieldValue": "={{ $json.price }}"
+            },
+            {
+              "fieldId": "issuer",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.issuer }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.source }}"
+            },
+            {
+              "fieldId": "dest",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.dest }}"
+            },
+            {
+              "fieldId": "raw",
+              "fieldValue": "={{ $('Code in JavaScript1').item.json.raw }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        448,
+        336
+      ],
+      "id": "cd12cf03-9111-41de-b544-836bc30f1bb0",
+      "name": "Create a row1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "86b3a240-de12-4103-9df4-290f3f0e778f",
+              "leftValue": "={{ $json.shares }}",
+              "rightValue": 100000,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        336
+      ],
+      "id": "1de830fe-e8e4-4fb7-8150-83dbe9e88017",
+      "name": "Filter1"
+    },
+    {
+      "parameters": {
+        "chatId": "7557941907",
+        "text": "=🐋 *Whale detected!*  \n\n{{ $json.direction === \"BUY\" ? \"🟢 *BUY*\" : \"🔴 *SELL*\" }} — **{{ $json.shares }} {{ $json.shares === 1 ? \"share\" : \"shares\" }}**\n\n💰 *Price:* `{{ $json.price_qubic }} ${{ $json.asset_name }}`  \n👤 *Wallet:* `{{ $json.issuer }}`  \n🧾 *TX:* `{{ $json.tx_id }}`  \n⏱ *Tick:* `{{ $json.tick_number }}`  \n\n🔗 [Explorer Link](https://explorer.qubic.org/network/tx/{{ $json.tx_id }})\n",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        336
+      ],
+      "id": "ff634b15-5cbc-4aa0-aec3-c0d5ac5f8899",
+      "name": "Send a text message",
+      "webhookId": "787aff16-c3a9-4d35-a4bd-0d09efb50cef",
+      "credentials": {
+        "telegramApi": {
+          "id": "p9ZiMAf6V6FBmaIy",
+          "name": "Qubic Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "easyconnect-whale",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        336
+      ],
+      "id": "d75e3490-93a9-47d2-a128-2dcf07de0555",
+      "name": "GARTH ASK",
+      "webhookId": "73de2f9f-a340-4224-8f22-ddfc94b30050"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "garthbid",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        16
+      ],
+      "id": "305f5f4e-a894-4f7f-b382-0d51adf1225d",
+      "name": "GARTH BID",
+      "webhookId": "73de2f9f-a340-4224-8f22-ddfc94b30050"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tx = $json;\n\n// we only track BUY volume for airdrops\nif (tx.direction !== \"BUY\") {\n  return [{ json: { skip: true }}];\n}\n\nreturn [{\n  json: {\n    wallet_address: tx.source,   // or tx.issuer if needed\n    amount: Number(tx.shares || 0),\n    tx_time: tx.created_at\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        -80
+      ],
+      "id": "36acd8fb-92e8-429e-bb66-f05b8362dae5",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "airdrops",
+        "limit": 1,
+        "filterType": "string",
+        "filterString": "=wallet_address=eq.{{$json.wallet_address}}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        896,
+        -80
+      ],
+      "id": "f3d975b3-fd70-4023-91e9-98d19c8f315b",
+      "name": "Get many rows",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Load BUY extracted data\nconst extractNode = $node[\"Code in JavaScript2\"];\nconst extract = extractNode?.json;\n\nif (!extract) {\n  throw new Error(\"Extract not found. Node name must be EXACTLY: Code in JavaScript2\");\n}\n\n// 2. Load fetched airdrop row from Get many rows\nconst fetched = $json;\n\n// Normalize\nlet prev = null;\n\nif (Array.isArray(fetched) && fetched.length > 0) {\n  prev = fetched[0];\n} else if (fetched && typeof fetched === 'object' && Object.keys(fetched).length > 0) {\n  prev = fetched;\n}\n\n// 3. NEW WALLET → CREATE\nif (!prev) {\n  return [{\n    json: {\n      mode: 'create',\n      wallet_address: extract.wallet_address,\n      total_volume: extract.amount,\n      tx_count: 1,\n      last_tx_at: extract.tx_time,\n      eligible: false,\n      claimed: false\n    }\n  }];\n}\n\n// 4. EXISTING WALLET → UPDATE\nreturn [{\n  json: {\n    mode: 'update',\n    wallet_address: extract.wallet_address,\n    total_volume: Number(prev.total_volume || 0) + extract.amount,\n    tx_count: Number(prev.tx_count || 0) + 1,\n    last_tx_at: extract.tx_time,\n    eligible: prev.eligible,\n    claimed: prev.claimed\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -80
+      ],
+      "id": "e1408acc-617e-46a9-82e3-9af49dcde6e7",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "bcba02b6-c928-4155-9840-3ce538413ee9"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Create"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "47a6be93-aab1-4dc4-b84c-de4a5132cf24",
+                    "leftValue": "={{ $json.mode }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Update"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        1344,
+        -80
+      ],
+      "id": "f1c2d524-305b-49bb-923a-69037383b5eb",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "airdrops",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "wallet_address",
+              "condition": "eq",
+              "keyValue": "={{ $json.wallet_address }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "total_volume",
+              "fieldValue": "={{ $json.total_volume }}"
+            },
+            {
+              "fieldId": "tx_count",
+              "fieldValue": "={{ $json.tx_count }}"
+            },
+            {
+              "fieldId": "last_tx_at",
+              "fieldValue": "={{ $json.last_tx_at }}"
+            },
+            {
+              "fieldId": "eligible",
+              "fieldValue": "={{ $json.eligible }}"
+            },
+            {
+              "fieldId": "claimed",
+              "fieldValue": "={{ $json.claimed }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        16
+      ],
+      "id": "5012c038-b810-4e6d-8ea1-28aa9bc64a15",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "airdrops",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "total_volume",
+              "fieldValue": "={{ $json.total_volume }}"
+            },
+            {
+              "fieldId": "tx_count",
+              "fieldValue": "={{ $json.tx_count }}"
+            },
+            {
+              "fieldId": "last_tx_at",
+              "fieldValue": "={{ $json.last_tx_at }}"
+            },
+            {
+              "fieldId": "eligible",
+              "fieldValue": "={{ $json.eligible }}"
+            },
+            {
+              "fieldId": "claimed",
+              "fieldValue": "={{ $json.claimed }}"
+            },
+            {
+              "fieldId": "wallet_address",
+              "fieldValue": "={{ $json.wallet_address }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        -176
+      ],
+      "id": "1e49c5d1-9c7f-4bef-b594-7be2799b7099",
+      "name": "Create a row2",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "GARTH ASK": [
+      {
+        "json": {
+          "headers": {
+            "host": "rushil-bhor.app.n8n.cloud",
+            "content-length": "851",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "15.237.184.9",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "FR",
+            "cf-ray": "9aa4c85ad134d590-CDG",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json; charset=utf-8",
+            "x-forwarded-for": "15.237.184.9, 141.101.95.37",
+            "x-forwarded-host": "rushil-bhor.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-15-6cb64f5ddc-g6lcc",
+            "x-is-trusted": "yes",
+            "x-real-ip": "15.237.184.9"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "ProcedureTypeValue": 5,
+            "ProcedureTypeName": "AddToAskOrder",
+            "RawTransaction": {
+              "transaction": {
+                "sourceId": "JYTPOGMIFTBNTGDMWMUPFDVMAQLASQNJACLPHKTTXCQLUULTFSOQKCKEAULM",
+                "destId": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+                "amount": "0",
+                "tickNumber": 38932348,
+                "inputType": 5,
+                "inputSize": 56,
+                "inputHex": "72a2d080fa8a6478239616a50837ec129c45324affabd3bb1f12a0901e3a49ee47415254480000002d000000000000007ce2b20000000000",
+                "signatureHex": "ce3661de8f8346802272760d28986916f3caa851073290cdc63819e492500fe77170e6c67b63cf08ea27707705580d2550d61a526a787c0404d96947b3c90800",
+                "txId": "dpffrrngrkokbddqvyewyincwsvduajnkrsrrnbjmddulvynzhjpuemcbmcc"
+              },
+              "timestamp": "1765118423000",
+              "moneyFlew": false
+            },
+            "ParsedTransaction": {
+              "IssuerAddress": "GARTHFANXMPXMDPEZFQPWFPYMHOAWTKILINCTRMVLFFVATKVJRKEDYXGHJBF",
+              "AssetName": "GARTH",
+              "Price": 45,
+              "NumberOfShares": 11723388
+            }
+          },
+          "webhookUrl": "https://rushil-bhor.app.n8n.cloud/webhook/easyconnect-whale",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "Create a row1": [
+      {
+        "json": {
+          "id": 54,
+          "created_at": "2025-12-07T14:41:13.754026+00:00",
+          "tx_id": "dpffrrngrkokbddqvyewyincwsvduajnkrsrrnbjmddulvynzhjpuemcbmcc",
+          "tick_number": 38932348,
+          "timestamp": 1765118423000,
+          "direction": "SELL",
+          "asset_name": "GARTH",
+          "shares": 11723388,
+          "price_qubic": 45,
+          "price_usdt": null,
+          "total_value_usdt": null,
+          "issuer": "GARTHFANXMPXMDPEZFQPWFPYMHOAWTKILINCTRMVLFFVATKVJRKEDYXGHJBF",
+          "source": "JYTPOGMIFTBNTGDMWMUPFDVMAQLASQNJACLPHKTTXCQLUULTFSOQKCKEAULM",
+          "dest": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+          "raw": {
+            "RawTransaction": {
+              "moneyFlew": false,
+              "timestamp": "1765118423000",
+              "transaction": {
+                "txId": "dpffrrngrkokbddqvyewyincwsvduajnkrsrrnbjmddulvynzhjpuemcbmcc",
+                "amount": "0",
+                "destId": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+                "inputHex": "72a2d080fa8a6478239616a50837ec129c45324affabd3bb1f12a0901e3a49ee47415254480000002d000000000000007ce2b20000000000",
+                "sourceId": "JYTPOGMIFTBNTGDMWMUPFDVMAQLASQNJACLPHKTTXCQLUULTFSOQKCKEAULM",
+                "inputSize": 56,
+                "inputType": 5,
+                "tickNumber": 38932348,
+                "signatureHex": "ce3661de8f8346802272760d28986916f3caa851073290cdc63819e492500fe77170e6c67b63cf08ea27707705580d2550d61a526a787c0404d96947b3c90800"
+              }
+            },
+            "ParsedTransaction": {
+              "Price": 45,
+              "AssetName": "GARTH",
+              "IssuerAddress": "GARTHFANXMPXMDPEZFQPWFPYMHOAWTKILINCTRMVLFFVATKVJRKEDYXGHJBF",
+              "NumberOfShares": 11723388
+            },
+            "ProcedureTypeName": "AddToAskOrder",
+            "ProcedureTypeValue": 5
+          }
+        }
+      }
+    ],
+    "GARTH BID": [
+      {
+        "json": {
+          "headers": {
+            "host": "rushil-bhor.app.n8n.cloud",
+            "content-length": "857",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "13.38.24.237",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "FR",
+            "cf-ray": "9aa3c0b317f6020e-CDG",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json; charset=utf-8",
+            "x-forwarded-for": "13.38.24.237, 141.101.96.55",
+            "x-forwarded-host": "rushil-bhor.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-15-6cb64f5ddc-wtj5h",
+            "x-is-trusted": "yes",
+            "x-real-ip": "13.38.24.237"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "ProcedureTypeValue": 6,
+            "ProcedureTypeName": "AddToBidOrder",
+            "RawTransaction": {
+              "transaction": {
+                "sourceId": "BGIJDMEMOETGSARQTMMQXWBJKJPCSDAPLDTMQXIYDFDDEPDDZJFQIBDCPONE",
+                "destId": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+                "amount": "215000000",
+                "tickNumber": 38922114,
+                "inputType": 6,
+                "inputSize": 56,
+                "inputHex": "72a2d080fa8a6478239616a50837ec129c45324affabd3bb1f12a0901e3a49ee47415254480000002b00000000000000404b4c0000000000",
+                "signatureHex": "635af025055488c85b1c6f26cfd5a0212c95049f43248427f5f52cd69b32e572fb6cfe4b0f03ce746e50eda125312b79778e2eb281361983fd64f8664fbb2800",
+                "txId": "sktxtzrairtlvdtaehkzchuvonlcawrmudzibitiadilpgzykgedcthfjugh"
+              },
+              "timestamp": "1765107585000",
+              "moneyFlew": true
+            },
+            "ParsedTransaction": {
+              "IssuerAddress": "GARTHFANXMPXMDPEZFQPWFPYMHOAWTKILINCTRMVLFFVATKVJRKEDYXGHJBF",
+              "AssetName": "GARTH",
+              "Price": 43,
+              "NumberOfShares": 5000000
+            }
+          },
+          "webhookUrl": "https://rushil-bhor.app.n8n.cloud/webhook/garthbid",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "Create a row": [
+      {
+        "json": {
+          "id": 38,
+          "created_at": "2025-12-07T11:41:16.953962+00:00",
+          "tx_id": "sktxtzrairtlvdtaehkzchuvonlcawrmudzibitiadilpgzykgedcthfjugh",
+          "tick_number": 38922114,
+          "timestamp": 1765107585000,
+          "direction": "BUY",
+          "asset_name": "GARTH",
+          "shares": 5000000,
+          "price_qubic": 43,
+          "price_usdt": null,
+          "total_value_usdt": null,
+          "issuer": "GARTHFANXMPXMDPEZFQPWFPYMHOAWTKILINCTRMVLFFVATKVJRKEDYXGHJBF",
+          "source": "BGIJDMEMOETGSARQTMMQXWBJKJPCSDAPLDTMQXIYDFDDEPDDZJFQIBDCPONE",
+          "dest": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+          "raw": {
+            "RawTransaction": {
+              "moneyFlew": true,
+              "timestamp": "1765107585000",
+              "transaction": {
+                "txId": "sktxtzrairtlvdtaehkzchuvonlcawrmudzibitiadilpgzykgedcthfjugh",
+                "amount": "215000000",
+                "destId": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+                "inputHex": "72a2d080fa8a6478239616a50837ec129c45324affabd3bb1f12a0901e3a49ee47415254480000002b00000000000000404b4c0000000000",
+                "sourceId": "BGIJDMEMOETGSARQTMMQXWBJKJPCSDAPLDTMQXIYDFDDEPDDZJFQIBDCPONE",
+                "inputSize": 56,
+                "inputType": 6,
+                "tickNumber": 38922114,
+                "signatureHex": "635af025055488c85b1c6f26cfd5a0212c95049f43248427f5f52cd69b32e572fb6cfe4b0f03ce746e50eda125312b79778e2eb281361983fd64f8664fbb2800"
+              }
+            },
+            "ParsedTransaction": {
+              "Price": 43,
+              "AssetName": "GARTH",
+              "IssuerAddress": "GARTHFANXMPXMDPEZFQPWFPYMHOAWTKILINCTRMVLFFVATKVJRKEDYXGHJBF",
+              "NumberOfShares": 5000000
+            },
+            "ProcedureTypeName": "AddToBidOrder",
+            "ProcedureTypeValue": 6
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Create a row1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row1": {
+      "main": [
+        [
+          {
+            "node": "Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter1": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GARTH ASK": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GARTH BID": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Create a row2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9d566a76-6964-437f-83e2-4d5173cf17c1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "22d48b22ce482cf17945bacd3c954d6fd5c9d5ecd29c6d8d87d8d09732e55d60"
+  },
+  "id": "NL9U9eWIa4wLOgfD",
+  "tags": []
+}

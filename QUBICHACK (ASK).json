@@ -1,0 +1,353 @@
+{
+  "name": "QUBICHACK (ASK)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "qx-qubichack",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "76de134a-b925-402e-8c5a-5a93df4e8356",
+      "name": "Webhook",
+      "webhookId": "fd7bb09b-f7ba-47ec-b4e0-0a5cf527401a"
+    },
+    {
+      "parameters": {
+        "url": "https://api.mexc.com/api/v3/ticker/price",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "QUBICUSDT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        0
+      ],
+      "id": "26eab743-e21f-4cfa-8285-291f23665338",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safe extract of the webhook payload\nconst body = $json.body || {};\nconst parsed = body.ParsedTransaction || {};\nconst rawTx = body.RawTransaction?.transaction || {};\nconst rawMeta = body.RawTransaction || {};\n\n// Convert Qubic procedure → simple BUY/SELL\nconst direction = body.ProcedureTypeName === \"AddToBidOrder\" ? \"BUY\" : \"SELL\";\n\n// Safe number conversion\nconst shares = Number(parsed.NumberOfShares || 0);\nconst price = Number(parsed.Price || 0);\n\nreturn [{\n  json: {\n    // Core identifiers\n    tx_id: rawTx.txId || null,\n    tick_number: rawTx.tickNumber || null,\n    timestamp: rawMeta.timestamp || null,\n\n    // Classification\n    direction,\n    asset_name: parsed.AssetName || \"QX\",\n\n    // Trading info\n    shares,\n    price_qubic: price,\n\n    // Placeholder for your Supabase price enrichment later\n    price_usdt: null,\n    total_value_usdt: null,\n\n    // Blockchain metadata\n    issuer: parsed.IssuerAddress || null,\n    source: rawTx.sourceId || null,\n    dest: rawTx.destId || null,\n\n    // Keep full raw payload for debugging\n    raw: body\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "be7a60a6-593c-4a18-a951-bf75f6223dc5",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "tableId": "transactions",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "tx_id",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.tx_id }}"
+            },
+            {
+              "fieldId": "tick_number",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.tick_number }}"
+            },
+            {
+              "fieldId": "timestamp",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.timestamp }}"
+            },
+            {
+              "fieldId": "direction",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.direction }}"
+            },
+            {
+              "fieldId": "asset_name",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.asset_name }}"
+            },
+            {
+              "fieldId": "shares",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.shares }}"
+            },
+            {
+              "fieldId": "price_usdt",
+              "fieldValue": "={{ $json.price }}"
+            },
+            {
+              "fieldId": "issuer",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.issuer }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.source }}"
+            },
+            {
+              "fieldId": "dest",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.dest }}"
+            },
+            {
+              "fieldId": "raw",
+              "fieldValue": "={{ $('Code in JavaScript').item.json.raw }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "id": "c4ff41f3-8651-4ce6-88e4-0008bd0f5cce",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "86b3a240-de12-4103-9df4-290f3f0e778f",
+              "leftValue": "={{ $json.shares }}",
+              "rightValue": 10000,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "5d44500c-64b8-483a-a5a9-aeeb6df2762e",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "chatId": "7557941907",
+        "text": "=🐋 *Whale detected!*  \n\n{{ $json.direction === \"BUY\" ? \"🟢 *BUY*\" : \"🔴 *SELL*\" }} — **{{ $json.shares }} {{ $json.shares === 1 ? \"share\" : \"shares\" }}**\n\n💰 *Price:* `{{ $json.price_qubic }} $QUBIC`  \n👤 *Wallet:* `{{ $json.issuer }}`  \n🧾 *TX:* `{{ $json.tx_id }}`  \n⏱ *Tick:* `{{ $json.tick_number }}`  \n\n🔗 [Explorer Link](https://explorer.qubic.org/network/tx/{{ $json.tx_id }})\n",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "dd77f19f-3969-434b-8278-573e6687c6c2",
+      "name": "Send a text message1",
+      "webhookId": "787aff16-c3a9-4d35-a4bd-0d09efb50cef",
+      "credentials": {
+        "telegramApi": {
+          "id": "p9ZiMAf6V6FBmaIy",
+          "name": "Qubic Bot"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "rushil-bhor.app.n8n.cloud",
+            "content-length": "849",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "15.237.197.200",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "FR",
+            "cf-ray": "9aa06f2a86458d3b-CDG",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json; charset=utf-8",
+            "x-forwarded-for": "15.237.197.200, 172.68.151.13",
+            "x-forwarded-host": "rushil-bhor.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-15-6cb64f5ddc-fd6vs",
+            "x-is-trusted": "yes",
+            "x-real-ip": "15.237.197.200"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "ProcedureTypeValue": 5,
+            "ProcedureTypeName": "AddToAskOrder",
+            "RawTransaction": {
+              "transaction": {
+                "sourceId": "ZFINQNMBPKIATBXIILLADBAGYAJAUNRIRLXXAIABXGMZZDFPNTINYRVCMYGL",
+                "destId": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+                "amount": "1",
+                "tickNumber": 38889620,
+                "inputType": 5,
+                "inputSize": 56,
+                "inputHex": "00000000000000000000000000000000000000000000000000000000000000005158000000000000c08861f4010000000100000000000000",
+                "signatureHex": "462a13244376aa5d6a51feea6fdc5a3e7da34a4be60b72da0dc9505a19fc868da872ed366827f700658360a77e85c91b5e7acef11dbef9e1c4ce32239dcb0800",
+                "txId": "flxmpqfylecasfxvoivahveagnlavcbbanhofpjgwgcqcufldktbmzvajbaa"
+              },
+              "timestamp": "1765072800000",
+              "moneyFlew": false
+            },
+            "ParsedTransaction": {
+              "IssuerAddress": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFXIB",
+              "AssetName": "QX",
+              "Price": 8395000000,
+              "NumberOfShares": 1
+            }
+          },
+          "webhookUrl": "https://rushil-bhor.app.n8n.cloud/webhook/qx-qubichack",
+          "executionMode": "production"
+        }
+      }
+    ],
+    "Create a row": [
+      {
+        "json": {
+          "id": 15,
+          "created_at": "2025-12-07T02:01:20.108659+00:00",
+          "tx_id": "flxmpqfylecasfxvoivahveagnlavcbbanhofpjgwgcqcufldktbmzvajbaa",
+          "tick_number": 38889620,
+          "timestamp": 1765072800000,
+          "direction": "SELL",
+          "asset_name": "QX",
+          "shares": 1,
+          "price_qubic": 8395000000,
+          "price_usdt": 7.322e-7,
+          "total_value_usdt": null,
+          "issuer": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFXIB",
+          "source": "ZFINQNMBPKIATBXIILLADBAGYAJAUNRIRLXXAIABXGMZZDFPNTINYRVCMYGL",
+          "dest": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+          "raw": {
+            "RawTransaction": {
+              "moneyFlew": false,
+              "timestamp": "1765072800000",
+              "transaction": {
+                "txId": "flxmpqfylecasfxvoivahveagnlavcbbanhofpjgwgcqcufldktbmzvajbaa",
+                "amount": "1",
+                "destId": "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARMID",
+                "inputHex": "00000000000000000000000000000000000000000000000000000000000000005158000000000000c08861f4010000000100000000000000",
+                "sourceId": "ZFINQNMBPKIATBXIILLADBAGYAJAUNRIRLXXAIABXGMZZDFPNTINYRVCMYGL",
+                "inputSize": 56,
+                "inputType": 5,
+                "tickNumber": 38889620,
+                "signatureHex": "462a13244376aa5d6a51feea6fdc5a3e7da34a4be60b72da0dc9505a19fc868da872ed366827f700658360a77e85c91b5e7acef11dbef9e1c4ce32239dcb0800"
+              }
+            },
+            "ParsedTransaction": {
+              "Price": 8395000000,
+              "AssetName": "QX",
+              "IssuerAddress": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFXIB",
+              "NumberOfShares": 1
+            },
+            "ProcedureTypeName": "AddToAskOrder",
+            "ProcedureTypeValue": 5
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Send a text message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "0ece5091-63a8-46e8-b967-19e9731384d7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "22d48b22ce482cf17945bacd3c954d6fd5c9d5ecd29c6d8d87d8d09732e55d60"
+  },
+  "id": "cVoCFtQOuphxID1C",
+  "tags": []
+}

@@ -1,0 +1,399 @@
+{
+  "name": "SIGNAL",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "381fdc73-3f81-4fc4-979d-ac5a78fe5e28",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "transactions",
+        "filterType": "string",
+        "filterString": "=created_at=gte.{{$now.minus({minutes: 60}).toUTC().toISO()}}"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "a04a4657-64f7-48d0-b1ac-90465d1ce83e",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(r => r.json);\n\n// If no trades, return fallback\nif (rows.length === 0) {\n  return [{\n    json: {\n      buy_orders: 0,\n      sell_orders: 0,\n      whales: 0,\n      volume: 0,\n      avg_price_qubic: 0,\n      max_price: 0,\n      min_price: 0,\n      price_trend: 0,\n      unique_wallets: 0,\n      dominant_wallets: [],\n      raw_count: 0\n    }\n  }];\n}\n\n// Aggregate features\nlet buy = 0;\nlet sell = 0;\nlet whales = 0;\nlet volume = 0;\nlet prices = [];\nlet wallets = {};\n\nfor (const tx of rows) {\n  // Buy vs Sell\n  if (tx.direction === \"BUY\") buy++;\n  if (tx.direction === \"SELL\") sell++;\n\n  // Whale detection\n  if (tx.shares >= 5000) whales++;\n\n  // Volume calculation\n  volume += Number(tx.shares || 0);\n\n  // Price\n  prices.push(Number(tx.price_qubic || 0));\n\n  // Wallet activity\n  const w = tx.issuer;\n  wallets[w] = (wallets[w] || 0) + 1;\n}\n\nconst avgPrice = prices.reduce((a,b)=>a+b,0) / prices.length;\nconst maxPrice = Math.max(...prices);\nconst minPrice = Math.min(...prices);\n\n// Price trend = slope proxy\nconst priceTrend = (maxPrice - minPrice) / avgPrice;\n\n// Dominant wallets (those > 5% of txs)\nconst dominantWallets = Object.entries(wallets)\n  .filter(([_,count]) => count / rows.length >= 0.05)\n  .map(([addr,_]) => addr);\n\n// Final clean features\nreturn [{\n  json: {\n    buy_orders: buy,\n    sell_orders: sell,\n    whales,\n    volume,\n    avg_price_qubic: avgPrice,\n    max_price: maxPrice,\n    min_price: minPrice,\n    price_trend: priceTrend,\n    unique_wallets: Object.keys(wallets).length,\n    dominant_wallets: dominantWallets,\n    raw_count: rows.length\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "782c39dd-4a78-4fe0-84ac-889ae93c80f4",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify($json) }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a quantitative trading model for the Qubic (QX) asset.\n\nInput:\nBelow is structured market feature data from the last 60–90 minutes:\n{{ JSON.stringify($json) }}\n\nYour tasks:\n1. Predict the next-day price direction: UP, DOWN, or FLAT.\n2. You MUST fetch the live QX price using the HTTP tool before generating the prediction.\n3. Output ONLY the final JSON object—no extra text.\n\n-------------------------------------------\nINTERPRETATION RULES\n-------------------------------------------\n\nBUY/SELL PRESSURE\n- If buy_orders exceed sell_orders by ≥30% → bias UP.\n- If sell_orders exceed buy_orders by ≥30% → bias DOWN.\n(You may treat “strong pressure” as 35%+, extreme pressure as 70%+.)\n\nWHALE ACTIVITY\n- If whales > 0 and most whale activity is BUY → strong UP.\n- If whales > 0 and mostly SELL → strong DOWN.\n\nPRICE MOMENTUM\n- price_trend > 0.02 → momentum UP.\n- price_trend < -0.02 → momentum DOWN.\n\nVOLUME CONDITIONS\n- If volume is low AND whales = 0 → FLAT.\n\nMANIPULATION RISK\n- If dominant_wallets > 1 → reduce resulting confidence by 20%.\n\n-------------------------------------------\nCONFIDENCE MODEL\n-------------------------------------------\nStart at 70 confidence.\n\nAdjust:\n+10 if multiple indicators agree on the same direction.\n-10 if indicators point in different directions.\n-20 if manipulation risk detected.\n\nFinal confidence must be between 0 and 100.\n\n-------------------------------------------\nREASON RULES (IMPORTANT)\n-------------------------------------------\nYour explanation must:\n- Be under 15 words.\n- Use casual, human-like phrasing.\n- NOT mention percentages, numbers, thresholds, or indicators.\n- NOT mention any conflicts between signals.\n- Describe only the dominant force:\n  (“strong buying interest”, “heavy selling pressure”, “steady price movement”, “low activity”, etc.)\n\n-------------------------------------------\nFINAL REQUIRED OUTPUT (STRICT)\n-------------------------------------------\n\n{\n  \"trend\": \"UP\" | \"DOWN\" | \"FLAT\",\n  \"confidence\": <0-100>,\n  \"reason\": \"short natural-language explanation\"\n}\n\nReturn ONLY this JSON and nothing else.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        736,
+        0
+      ],
+      "id": "7174e9a6-ba9a-4a86-b590-2c151180e3ab",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "url": "https://api.mexc.com/api/v3/ticker/price",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "QUBICUSDT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        800,
+        224
+      ],
+      "id": "b8c66748-cb9d-4c9b-bcee-cd8111787c6d",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        672,
+        224
+      ],
+      "id": "46245bd8-ba93-4a85-ba37-8928bb483442",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "002NeKOBCB1YneIC",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "trend_signals",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "trend",
+              "fieldValue": "={{ $json.output.trend }}"
+            },
+            {
+              "fieldId": "confidence",
+              "fieldValue": "={{ $json.output.confidence }}"
+            },
+            {
+              "fieldId": "reason",
+              "fieldValue": "={{ $json.output.reason }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        0
+      ],
+      "id": "1511c5a5-6dc0-431b-88cc-73982a083211",
+      "name": "Create a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"trend\": \"DOWN\",\n  \"confidence\": 72,\n  \"reason\": \"Sell pressure dominates and whales are active on the sell side.\"\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        928,
+        224
+      ],
+      "id": "0bfea3ae-4976-4326-94e2-aeef7e01adc1",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "chatId": "7557941907",
+        "text": "=📊 *Hourly Trend Signal*  \nTrend: *{{ $json.trend }}*  \nConfidence: *{{ $json.confidence }}%*  \nReason: {{ $json.reason }}\n\n🕒 Generated at {{ $now.setZone(\"Asia/Kolkata\").toFormat(\"dd LLL yyyy, hh:mm a\") }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2032,
+        0
+      ],
+      "id": "e99701e4-03c4-48da-8478-039f0e484ab4",
+      "name": "Send a text message",
+      "webhookId": "787aff16-c3a9-4d35-a4bd-0d09efb50cef",
+      "credentials": {
+        "telegramApi": {
+          "id": "p9ZiMAf6V6FBmaIy",
+          "name": "Qubic Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const prevNode = $prevNode[\"Get last signal\"];\nconst prev = prevNode?.json?.[0] || null;\n\nconst curr = $json;  // AI Agent output\n\n// If no previous signal exists → alert\nif (!prev) {\n  return [{\n    json: {\n      alert: true,\n      change_score: 100,\n      ...curr\n    }\n  }];\n}\n\n// -----------------------\n// SMART MODE SCORING\n// -----------------------\n\nlet score = 0;\n\n// 1️⃣ Trend change = major signal\nconst trendChanged = prev.trend !== curr.trend;\nif (trendChanged) score += 70;\n\n// 2️⃣ Confidence change (LLM-safe)\nconst confidenceDelta = Math.abs(prev.confidence - curr.confidence);\nif (confidenceDelta >= 20) score += 40;     // Big shift = real signal\nelse if (confidenceDelta >= 10) score += 15; // Small shift = maybe\n\n// 3️⃣ Reason changed ONLY counts if confidence also moved\nconst reasonChanged = prev.reason !== curr.reason;\nif (reasonChanged && confidenceDelta >= 10) {\n  score += 20;\n}\n\n// 4️⃣ Volume changes (if you store them later)\nif (curr.features?.volume !== undefined && prev.features?.volume !== undefined) {\n  const volNow = curr.features.volume;\n  const volPrev = prev.features.volume;\n\n  if (volPrev > 0) {\n    const volRatio = volNow / volPrev;\n\n    if (volRatio >= 1.5) score += 25;       // Real spike\n    else if (volRatio >= 1.2) score += 10;  // Moderate rise\n  }\n}\n\n// 5️⃣ Whale activity change\nif (curr.features?.whales !== prev.features?.whales) {\n  score += 20;\n}\n\n// -----------------------\n// FINAL DECISION\n// -----------------------\nconst shouldAlert = score >= 40;\n\nreturn [{\n  json: {\n    alert: shouldAlert,\n    change_score: score,\n    trendChanged,\n    confidenceDelta,\n    reasonChanged,\n    ...curr\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1584,
+        0
+      ],
+      "id": "c74baf83-dc90-4ef7-bc75-5b0a073a3e55",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3bc7c913-c273-4f38-8526-88557a8c8219",
+              "leftValue": "={{ $json.alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1808,
+        0
+      ],
+      "id": "66b3f74b-e91e-436a-95ae-6a740b1101fd",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "trend_signals",
+        "limit": 1,
+        "filterType": "string",
+        "filterString": "=id=not.eq.{{ $json.id }}&order=created_at.desc"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        0
+      ],
+      "id": "b4fb9318-f850-4c22-b91a-9291096427d4",
+      "name": "Get last signal",
+      "credentials": {
+        "supabaseApi": {
+          "id": "4q3t0kzNmS1vA321",
+          "name": "Qubic Supabse"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Create a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a row": {
+      "main": [
+        [
+          {
+            "node": "Get last signal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get last signal": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "80374b1f-5711-4216-adeb-230fb806d20b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "22d48b22ce482cf17945bacd3c954d6fd5c9d5ecd29c6d8d87d8d09732e55d60"
+  },
+  "id": "UjxGCOt1WnEfD78W",
+  "tags": []
+}
